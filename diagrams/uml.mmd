@@ -4,6 +4,7 @@ classDiagram
     class Owner {
         +str name
         +int available_minutes
+        +time day_start
         +dict preferences
         +list~Pet~ pets
         +add_pet(pet: Pet) None
@@ -27,25 +28,40 @@ classDiagram
         +int duration_minutes
         +str priority
         +str frequency
-        +str preferred_time
-        +bool completed
-        +mark_complete() None
-        +is_due_today() bool
+        +time preferred_time
+        +date last_completed
+        +priority_rank() int
+        +mark_complete(on: date) None
+        +is_completed(on: date) bool
+        +is_due_today(today: date) bool
         +edit(**changes) None
+    }
+
+    class ScheduledTask {
+        +Pet pet
+        +Task task
+        +datetime start
+        +datetime end
+        +str reason
     }
 
     class Scheduler {
         +Owner owner
-        +list plan
-        +list~Task~ skipped
-        +generate_plan() list
-        +sort_by_priority(tasks: list~Task~) list~Task~
-        +filter_by_time(tasks: list~Task~) list~Task~
+        +date day
+        +list~ScheduledTask~ plan
+        +list skipped
+        +generate_plan() list~ScheduledTask~
+        +sort_by_priority(tasks: list) list
+        +filter_by_time(tasks: list) list
         +detect_conflicts() list
         +explain_plan() str
+        -_add_entry(pet, task, start, reason) None
+        -_next_free_slot(earliest: datetime, duration_minutes: int) datetime
     }
 
     Owner "1" o-- "*" Pet : has
     Pet "1" *-- "*" Task : has
     Scheduler --> Owner : plans for
-    Scheduler ..> Task : schedules
+    Scheduler "1" *-- "*" ScheduledTask : builds
+    ScheduledTask --> Pet
+    ScheduledTask --> Task

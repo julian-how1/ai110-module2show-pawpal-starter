@@ -45,6 +45,13 @@ pip install -r requirements.txt
 ## 🖥️ Sample Output
 
 Paste a sample of your app's CLI or Streamlit output here so a reader can see what a generated plan looks like:
+Daily plan for Jordan (110/120 min used):
+  07:00-07:15  Litter box cleanup for Whiskers (15 min) - medium priority, placed in next open slot
+  07:30-08:00  Morning walk for Buddy (30 min) - high priority, pinned to preferred time
+  08:15-08:25  Breakfast for Buddy (10 min) - high priority, pinned to preferred time
+  08:25-08:45  Brushing for Whiskers (20 min) - low priority, placed in next open slot
+  09:00-09:05  Thyroid meds for Whiskers (5 min) - high priority, pinned to preferred time
+  18:00-18:30  Evening walk for Buddy (30 min) - medium priority, pinned to preferred time
 
 ```
 # e.g.:

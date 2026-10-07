@@ -1,11 +1,13 @@
 # PawPal+ Project Reflection
 
 ## 1. System Design
-
+# Core actions, add pet, schedule walk, view daily task
 **a. Initial design**
 
-- Briefly describe your initial UML design.
+- Briefly describe your initial UML design. 
+# The main structure is Owner (person using system), a Pet thats owned by the owner, Task (something to be done for pets), and Shecduler which handles all the task updates and planning.
 - What classes did you include, and what responsibilities did you assign to each?
+# Owner, Pet, Task, Scheduler, Owner - responsible for owner info, preferences, and pets. Pet - managing and adding/removing task assigned to specific pets. Task - represents individual pet tasks, category, duration, frequency etc of these tasks. Scheduler - organizes tasks and builds a priority, bases them on time, shows time conflicts etc.
 
 **b. Design changes**
 
