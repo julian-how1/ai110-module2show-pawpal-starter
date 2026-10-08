@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, field, fields, replace
 from datetime import date, datetime, time, timedelta
 from typing import Optional
 
@@ -22,6 +22,9 @@ class Task:
     frequency: str = "daily"
     preferred_time: Optional[time] = None
     last_completed: Optional[date] = None
+    due_date: Optional[date] = None  # None = due now
+    # The instance spawned when this one was completed; lets an undo remove it.
+    _next: Optional[Task] = field(default=None, init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         """Validate fields right after the dataclass is constructed."""
@@ -49,16 +52,22 @@ class Task:
         """Return True if this task was completed on the given date (defaults to today)."""
         return self.last_completed == (on or date.today())
 
+    def next_occurrence(self) -> Task:
+        """Return a fresh copy of this task, due one frequency period after it was completed."""
+        if self.last_completed is None:
+            raise ValueError(f"{self.title!r} hasn't been completed yet")
+        next_due = self.last_completed + timedelta(days=FREQUENCY_DAYS[self.frequency])
+        return replace(self, last_completed=None, due_date=next_due)
+
     def is_due_today(self, today: Optional[date] = None) -> bool:
         """Return True if this task should be scheduled on the given date (defaults to today)."""
-        today = today or date.today()
-        if self.last_completed is None:
-            return True
-        return (today - self.last_completed).days >= FREQUENCY_DAYS[self.frequency]
+        if self.last_completed is not None:
+            return False  # completed instances are history; the next instance carries the recurrence
+        return self.due_date is None or self.due_date <= (today or date.today())
 
     def edit(self, **changes) -> None:
         """Update one or more fields on this task, rejecting unknown field names."""
-        valid = {f.name for f in fields(self)}
+        valid = {f.name for f in fields(self) if f.init}
         unknown = set(changes) - valid
         if unknown:
             raise AttributeError(f"Task has no field(s): {', '.join(sorted(unknown))}")
@@ -87,6 +96,20 @@ class Pet:
                 del self.tasks[i]
                 return
         raise ValueError(f"{task.title!r} is not a task for {self.name}")
+
+    def complete_task(self, task: Task, on: Optional[date] = None) -> Task:
+        """Mark a task done and add its next occurrence (tomorrow or next week); return the new task."""
+        task.mark_complete(on)
+        task._next = task.next_occurrence()
+        self.add_task(task._next)
+        return task._next
+
+    def undo_complete(self, task: Task) -> None:
+        """Reverse complete_task: clear the completion and remove the occurrence it spawned."""
+        if task._next is not None and any(t is task._next for t in self.tasks):
+            self.remove_task(task._next)
+        task._next = None
+        task.last_completed = None
 
     def get_tasks(self) -> list[Task]:
         """Return all tasks for this pet."""
@@ -172,6 +195,22 @@ class Scheduler:
         """Return (pet, task) pairs ordered by priority, then shortest duration first."""
         return sorted(tasks, key=lambda p: (p[1].priority_rank, p[1].duration_minutes))
 
+    def sort_by_time(self, tasks: list[tuple[Pet, Task]]) -> list[tuple[Pet, Task]]:
+        """Return (pet, task) pairs ordered by preferred time; flexible (no time) tasks go last."""
+        return sorted(tasks, key=lambda p: (p[1].preferred_time is None, p[1].preferred_time or time.min))
+
+    def filter_tasks(
+        self, pet_name: Optional[str] = None, completed: Optional[bool] = None
+    ) -> list[tuple[Pet, Task]]:
+        """Return (pet, task) pairs matching the given pet name and/or completion status on this day."""
+        return [
+            (pet, task)
+            for pet in self.owner.pets
+            if pet_name is None or pet.name == pet_name
+            for task in pet.tasks
+            if completed is None or task.is_completed(self.day) == completed
+        ]
+
     def filter_by_time(self, tasks: list[tuple[Pet, Task]]) -> list[tuple[Pet, Task]]:
         """Keep tasks that fit in the owner's available time, in order; record the rest as skipped."""
         remaining = self.owner.available_minutes
@@ -215,11 +254,21 @@ class Scheduler:
             lines.append("Skipped:")
             for pet, task, reason in self.skipped:
                 lines.append(f"  {task.title} for {pet.name} [{task.priority}] - {reason}")
-        for a, b in self.detect_conflicts():
-            lines.append(
-                f"Warning: {a.task.title} ({a.pet.name}) overlaps {b.task.title} ({b.pet.name})"
-            )
+        lines.extend(self.conflict_warnings())
         return "\n".join(lines)
+
+    def conflict_warnings(self) -> list[str]:
+        """Return a readable warning for each pair of overlapping tasks (empty list if none)."""
+        warnings = []
+        for a, b in self.detect_conflicts():
+            if a.start == b.start:
+                clash = f"both start at {a.start:%H:%M}"
+            else:
+                clash = f"overlap {b.start:%H:%M}-{min(a.end, b.end):%H:%M}"
+            warnings.append(
+                f"Warning: {a.task.title} ({a.pet.name}) and {b.task.title} ({b.pet.name}) {clash}"
+            )
+        return warnings
 
     def _add_entry(self, pet: Pet, task: Task, start: datetime, reason: str) -> None:
         """Append a ScheduledTask to the plan, computing its end from the task duration."""
