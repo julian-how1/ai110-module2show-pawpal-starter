@@ -71,9 +71,9 @@ class Task:
         unknown = set(changes) - valid
         if unknown:
             raise AttributeError(f"Task has no field(s): {', '.join(sorted(unknown))}")
+        replace(self, **changes)  # validates on a copy, so a bad edit leaves this task untouched
         for name, value in changes.items():
             setattr(self, name, value)
-        self._validate()
 
 
 @dataclass
@@ -99,6 +99,8 @@ class Pet:
 
     def complete_task(self, task: Task, on: Optional[date] = None) -> Task:
         """Mark a task done and add its next occurrence (tomorrow or next week); return the new task."""
+        if task.last_completed is not None:
+            raise ValueError(f"{task.title!r} is already completed; complete its next occurrence instead")
         task.mark_complete(on)
         task._next = task.next_occurrence()
         self.add_task(task._next)
@@ -184,8 +186,12 @@ class Scheduler:
             self._add_entry(pet, task, start, f"{task.priority} priority, pinned to preferred time")
 
         day_start = datetime.combine(self.day, self.owner.day_start)
+        midnight = datetime.combine(self.day + timedelta(days=1), time.min)
         for pet, task in flexible:
             start = self._next_free_slot(day_start, task.duration_minutes)
+            if start + timedelta(minutes=task.duration_minutes) > midnight:
+                self.skipped.append((pet, task, "no open slot left before midnight"))
+                continue
             self._add_entry(pet, task, start, f"{task.priority} priority, placed in next open slot")
 
         self.plan.sort(key=lambda entry: entry.start)
@@ -202,13 +208,24 @@ class Scheduler:
     def filter_tasks(
         self, pet_name: Optional[str] = None, completed: Optional[bool] = None
     ) -> list[tuple[Pet, Task]]:
-        """Return (pet, task) pairs matching the given pet name and/or completion status on this day."""
+        """Return (pet, task) pairs matching the given pet name and/or completion status.
+
+        completed=True means done on this day; completed=False means still open. Instances
+        completed on earlier days are history and match neither.
+        """
+        def matches(task: Task) -> bool:
+            if completed is None:
+                return True
+            if completed:
+                return task.is_completed(self.day)
+            return task.last_completed is None
+
         return [
             (pet, task)
             for pet in self.owner.pets
             if pet_name is None or pet.name == pet_name
             for task in pet.tasks
-            if completed is None or task.is_completed(self.day) == completed
+            if matches(task)
         ]
 
     def filter_by_time(self, tasks: list[tuple[Pet, Task]]) -> list[tuple[Pet, Task]]:
